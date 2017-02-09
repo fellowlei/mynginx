@@ -1,19 +1,8 @@
 local route = require('route')
-local cjson = require('cjson') 
 local parser = require "redis.parser"
 
- local cmd1 = {{"set","name1","mark1"},{"get","name1"}}
- local cmd2 = {{"set","name2","mark2"},{"get","name2"}}
-
- local cmdlist = {}
- table.insert(cmdlist,cmd1)
- table.insert(cmdlist,cmd2)
-
- local keylist = {}
- table.insert(keylist,"name1")
- table.insert(keylist,"name2")
-
-local function multiget(keylist,cmdlist) 
+-- multi redis get
+local function multiGet(cmdlist) 
   local reqs = {}
   for i,req in ipairs(cmdlist) do 
  	local raw_reqs = {}
@@ -26,7 +15,23 @@ local function multiget(keylist,cmdlist)
   end
  
   local resps = { ngx.location.capture_multi(reqs) }
- 
+  return resps; 
+end
+
+-- test multi redis get
+local function testMultiGet()
+ local cmd1 = {{"set","name1","mark1"},{"get","name1"}}
+ local cmd2 = {{"set","name2","mark2"},{"get","name2"}}
+
+ local cmdlist = {}
+ table.insert(cmdlist,cmd1)
+ table.insert(cmdlist,cmd2)
+
+ local keylist = {}
+ table.insert(keylist,"name1")
+ table.insert(keylist,"name2")
+
+ local resps = multiGet(cmdlist);
   for i, resp in ipairs(resps) do
  	if resp.status == 200 and resp.body then
 		local replies = parser.parse_replies(resp.body,#cmdlist[i])
@@ -39,6 +44,5 @@ local function multiget(keylist,cmdlist)
   end
 end
 
-
-multiget(keylist,cmdlist);
+testMultiGet();
 
