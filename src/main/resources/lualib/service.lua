@@ -1,6 +1,11 @@
 local parser = require "redis.parser"
 local configs = ngx.shared.configs;
-
+local function initConfig()
+	if configs:get("fetchback1") == nil then
+		configs:set("fetchback1",0);
+	end	
+end
+initConfig();
 -- fetchback  auto route
 local function captureLocationRoute(args)
     if configs:get("fetchback1") < 3 then
