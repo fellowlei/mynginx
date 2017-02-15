@@ -1,29 +1,38 @@
 local parser = require "redis.parser"
 local configs = ngx.shared.configs;
-local function initConfig()
-    if configs:get("fetchback1") == nil then
-        configs:set("fetchback1", 0);
-    end
-end
 
-initConfig();
--- fetchback  auto route
-local function captureLocationRoute(args)
-    if configs:get("fetchback1") < 3 then
-        local res = ngx.location.capture("/fetchback_source1", { args = args });
+-- fetchback single get route
+local function single_get_route(args)
+    local fetchback_source_url_1="/fetchback_source1";
+    local fetchback_source_url_2="/fetchback_source2";
+    local fetchback_time_callback = 10; -- 时间间隔
+    local fetchback_try_count = 3;
+    local key_time_pass_fetchback = "key_time_pass_fetchback"
+    local key_count_failed_fetchback = "key_count_failed_fetchback";
+    local key_time_expired_fetchback ="key_time_expired_fetchback";
+
+    -- init
+    if configs:get(key_count_failed_fetchback) == nil then
+        configs:set(key_count_failed_fetchback,0);
+    end
+
+    if configs:get(key_count_failed_fetchback) < fetchback_try_count then
+        local res = ngx.location.capture(fetchback_source_url_1,{args=args});
         if res.status == ngx.HTTP_OK then
             return res;
         else
-            ngx.say(configs:get("fetchback1"));
-            if configs:get("time2") == nil then
-                configs:incr("fetchback1", 1)
-                configs:set("time2", "time2", 10); -- 时间间隔
+            if configs:get(key_time_pass_fetchback) == nil then
+                configs:set(key_time_pass_fetchback,key_time_pass_fetchback,fetchback_time_callback); -- 时间间隔
+                configs:set(key_count_failed_fetchback, 0)
             end
-            if configs:get("fetchback1") >= 3 then
-                configs:set("time", "time", 5);
-                ngx.say("set time");
+            configs:incr(key_count_failed_fetchback, 1)
+
+            --ngx.say(configs:get("fetchback1"));
+            if configs:get(key_count_failed_fetchback) >= fetchback_try_count then
+                configs:set(key_time_expired_fetchback,key_time_expired_fetchback, fetchback_time_callback); -- 时间间隔
+                --ngx.say("set time");
             end
-            res = ngx.location.capture("/fetchback_source2", { args = args });
+            res = ngx.location.capture(fetchback_source_url_2,{args=args});
             if res.status == ngx.HTTP_OK then
                 return res;
             else
@@ -31,11 +40,11 @@ local function captureLocationRoute(args)
             end
         end
     else
-        if configs:get("time") == nil then
-            configs:set("fetchback1", 0);
-            ngx.say("clear time");
+        if configs:get(key_time_expired_fetchback) == nil then
+            configs:set(key_count_failed_fetchback,0);
+            --ngx.say("clear time");
         end
-        local res = ngx.location.capture("/fetchback_source2", { args = args });
+        local res = ngx.location.capture(fetchback_source_url_2,{args=args});
         if res.status == ngx.HTTP_OK then
             return res;
         else
@@ -44,7 +53,6 @@ local function captureLocationRoute(args)
     end
 end
 
--- multi get
 local function multi_get(url, paramList)
     local reqs = {}
     for i, param in ipairs(paramList) do
@@ -63,27 +71,40 @@ local function multi_get(url, paramList)
     if isSuccess then
         return true, resps;
     else
-        return false;
+        return false,resps;
     end
 end
 
--- multi get  auto route
+-- fetchback multi get route
 local function multi_get_route(paramList)
-    if configs:get("fetchback1") < 3 then
-        local ok, resps = multi_get("/fetchback_source1", paramList)
+    local fetchback_source_url_1="/fetchback_source1";
+    local fetchback_source_url_2="/fetchback_source2";
+    local fetchback_time_callback = 10; -- 时间间隔
+    local fetchback_try_count = 3;
+    local key_time_pass_fetchback_multi = "key_time_pass_fetchback_multi"
+    local key_count_failed_fetchback_multi = "key_count_failed_fetchback_multi";
+    local key_time_expired_fetchback_multi ="key_time_expired_fetchback_multi";
+
+    -- init
+    if configs:get("key_count_failed_fetchback_multi") == nil then
+        configs:set("key_count_failed_fetchback_multi",0);
+    end
+
+    if configs:get(key_count_failed_fetchback_multi) < fetchback_try_count then
+        local ok, resps = multi_get(fetchback_source_url_1, paramList)
         if ok then
             return true, resps;
         else
-            ngx.say(configs:get("fetchback1"));
-            if configs:get("time2") == nil then
-                configs:incr("fetchback1", 1)
-                configs:set("time2", "time2", 10); -- 时间间隔
+            if configs:get(key_time_pass_fetchback_multi) == nil then
+                configs:set(key_time_pass_fetchback_multi,key_time_pass_fetchback_multi,fetchback_time_callback); -- 时间间隔
+                configs:set(key_count_failed_fetchback_multi, 0)
             end
-            if configs:get("fetchback1") >= 3 then
-                configs:set("time", "time", 5);
-                ngx.say("set time");
+            configs:incr(key_count_failed_fetchback_multi, 1)
+            if configs:get(key_count_failed_fetchback_multi) >= fetchback_try_count then
+                configs:set(key_time_expired_fetchback_multi, key_time_expired_fetchback_multi, fetchback_time_callback);
+                --ngx.say("set time");
             end
-            local ok, resps = multi_get("/fetchback_source2", paramList)
+            local ok, resps = multi_get(fetchback_source_url_2, paramList)
             if ok then
                 return true, resps;
             else
@@ -91,12 +112,12 @@ local function multi_get_route(paramList)
             end
         end
     else
-        if configs:get("time") == nil then
-            configs:set("fetchback1", 0);
-            ngx.say("clear time");
+        if configs:get(key_time_expired_fetchback_multi) == nil then
+            configs:set(key_count_failed_fetchback_multi, 0);
+            --ngx.say("clear time");
         end
 
-        local ok, resps = multi_get("/fetchback_source2", paramList)
+        local ok, resps = multi_get(fetchback_source_url_2, paramList)
         if ok then
             return true, resps;
         else
@@ -105,7 +126,6 @@ local function multi_get_route(paramList)
     end
 end
 
--- multi get route test
 local function multi_get_route_test()
     local paramList = {};
     table.insert(paramList, "name=mark")
@@ -124,11 +144,12 @@ local function multi_get_route_test()
 end
 
 
+
 -- route location
 local function getFetchbackUrl()
     --ngx.say('fetchbackurl')
     local flag = configs:get("fetchback");
-    if (1 == flag) then
+    if(1 == flag) then
         return "/fetchback_source2"
     else
         return "/fetchback_source1";
@@ -137,16 +158,19 @@ end
 
 -- fetchback route
 local function captureLocation(args)
-    local res = ngx.location.capture("/fetchback_source1", { args = args });
+    local res = ngx.location.capture("/fetchback_source1",{args=args});
     if res.status ~= ngx.HTTP_OK then
-        ngx.say("route 2")
-        res = ngx.location.capture("/fetchback_source2", { args = args });
+        --ngx.say("route 2")
+        res = ngx.location.capture("/fetchback_source2",{args=args});
         if res.status ~= ngx.HTTP_OK then
             return nil;
         end
     end
     return res;
 end
+
+
+
 
 -- test capturelocation
 local function testCaptureLocation()
@@ -180,19 +204,16 @@ end
 -- multi redis get
 -- cmdList 格式 {{{"get","name1"}} ,{{"get","name2"}}}
 -- route 规则 按cmdlist[*][1][2] 格式 例如 按"name1","name2"分区
-local function multiGet(getLocation, cmdlist)
+local function redis_multi_get(getLocation,cmdlist)
     local reqs = {}
-    for i, req in ipairs(cmdlist) do
+    for i,req in ipairs(cmdlist) do
         local raw_reqs = {}
         for j, req2 in ipairs(req) do
-            table.insert(raw_reqs, parser.build_query(req2))
+            table.insert(raw_reqs,parser.build_query(req2))
         end
         --ngx.say(req[1][2].." route ".. getLocation(req[1][2]));
-        table.insert(reqs, {
-            "/" .. getLocation(req[1][2]) .. "?" .. #req, {
-                body = table.concat(raw_reqs, "")
-            }
-        });
+        table.insert(reqs,{"/"..getLocation(req[1][2]).."?"..#req,{
+            body=table.concat(raw_reqs,"")}});
     end
 
     local resps = { ngx.location.capture_multi(reqs) }
@@ -201,24 +222,24 @@ end
 
 
 -- test multi redis get
-local function testMultiGet()
-    local cmd1 = { { "set", "name1", "mark1" }, { "get", "name1" } }
-    local cmd2 = { { "set", "name2", "mark2" }, { "get", "name2" } }
+local function test_redis_multi_get()
+    local cmd1 = {{"set","name1","mark1"},{"get","name1"}}
+    local cmd2 = {{"set","name2","mark2"},{"get","name2"}}
 
     local cmdlist = {}
-    table.insert(cmdlist, cmd1)
-    table.insert(cmdlist, cmd2)
+    table.insert(cmdlist,cmd1)
+    table.insert(cmdlist,cmd2)
 
     local keylist = {}
-    table.insert(keylist, "name1")
-    table.insert(keylist, "name2")
+    table.insert(keylist,"name1")
+    table.insert(keylist,"name2")
 
     local resps = multiGet(cmdlist);
     for i, resp in ipairs(resps) do
         if resp.status == 200 and resp.body then
-            local replies = parser.parse_replies(resp.body, #cmdlist[i])
-            for j, reply in ipairs(replies) do
-                ngx.say(keylist[i] .. "=" .. reply[1])
+            local replies = parser.parse_replies(resp.body,#cmdlist[i])
+            for j,reply in ipairs(replies) do
+                ngx.say(keylist[i].."="..reply[1])
             end
         else
             ngx.say("not found")
@@ -229,13 +250,13 @@ end
 -- single redis get
 -- cmdlist 格式 {{"set","name","mark"},{"get","name"}}
 -- route 规则 按 cmdlist[1][2] 格式 例如 按"name" 分区
-local function singleget(getLocation, cmdlist)
+local function redis_single_get(getLocation,cmdlist)
     local raw_reqs = {}
     for i, req in ipairs(cmdlist) do
         table.insert(raw_reqs, parser.build_query(req))
     end
 
-    local res = ngx.location.capture("/" .. getLocation(req[1][2]) .. "?" .. #cmdlist,
+    local res = ngx.location.capture("/"..getLocation(req[1][2]).."?".. #cmdlist,
         { body = table.concat(raw_reqs, "") })
     if res.status == 200 and res.body then
         return res;
@@ -245,8 +266,8 @@ local function singleget(getLocation, cmdlist)
 end
 
 -- test single get
-local function testSingleGet()
-    local cmdlist = { { "set", "name", "mark" }, { "get", "name" } }
+local function test_redis_single_get()
+    local cmdlist = {{"set","name","mark"},{"get", "name"}}
     local res = singleget(cmdlist)
     if res ~= nil then
         local replies = parser.parse_replies(res.body, #cmdlist)
@@ -257,14 +278,12 @@ local function testSingleGet()
 end
 
 
-local service = {
-    getFetchbackUrl = getFetchbackUrl,
-    captureLocation = captureLocation,
-    captureLocationRoute = captureLocationRoute,
-    multiGet = multiGet,
-    singleget = singleget
+local route = {
+    single_get_route=single_get_route,
+    multi_get_route=multi_get_route,
+    redis_multi_get=redis_multi_get,
+    redis_single_get=redis_single_get
 }
 
-return service
-
+return route
 
