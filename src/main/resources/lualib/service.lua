@@ -288,12 +288,12 @@ local function test_redis_single_get()
 end
 
 
-local route = {
+local service = {
     single_get_route=single_get_route,
     multi_get_route=multi_get_route,
     redis_multi_get=redis_multi_get,
     redis_single_get=redis_single_get
 }
 
-return route
+return service
 
