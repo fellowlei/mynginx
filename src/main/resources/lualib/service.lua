@@ -2,11 +2,16 @@ local parser = require "redis.parser"
 local configs = ngx.shared.configs;
 
 -- fetchback single get route
+-- if call url_1 failed 3 times then call url_2
+-- after 10 second then call url_1 again
+-- args eg: "name=mark&age=18"
+-- return eg: if success then return true,res
+--            if failed then return false,res
 local function single_get_route(args)
-    local fetchback_source_url_1="/fetchback_source1";
-    local fetchback_source_url_2="/fetchback_source2";
+    local fetchback_source_url_1="/fetchback_source1"; -- fetchback_url_1
+    local fetchback_source_url_2="/fetchback_source2"; -- fetchback_url_1
     local fetchback_time_callback = 10; -- 时间间隔
-    local fetchback_try_count = 3;
+    local fetchback_try_count = 3;  -- try time
     local key_time_pass_fetchback = "key_time_pass_fetchback"
     local key_count_failed_fetchback = "key_count_failed_fetchback";
     local key_time_expired_fetchback ="key_time_expired_fetchback";
@@ -19,7 +24,7 @@ local function single_get_route(args)
     if configs:get(key_count_failed_fetchback) < fetchback_try_count then
         local res = ngx.location.capture(fetchback_source_url_1,{args=args});
         if res.status == ngx.HTTP_OK then
-            return res;
+            return true,res;
         else
             if configs:get(key_time_pass_fetchback) == nil then
                 configs:set(key_time_pass_fetchback,key_time_pass_fetchback,fetchback_time_callback); -- 时间间隔
@@ -34,9 +39,9 @@ local function single_get_route(args)
             end
             res = ngx.location.capture(fetchback_source_url_2,{args=args});
             if res.status == ngx.HTTP_OK then
-                return res;
+                return true,res;
             else
-                return nil;
+                return false,res;
             end
         end
     else
@@ -46,9 +51,9 @@ local function single_get_route(args)
         end
         local res = ngx.location.capture(fetchback_source_url_2,{args=args});
         if res.status == ngx.HTTP_OK then
-            return res;
+            return true,res;
         else
-            return nil;
+            return false,resp;
         end
     end
 end
@@ -76,6 +81,11 @@ local function multi_get(url, paramList)
 end
 
 -- fetchback multi get route
+-- if call url_1 failed 3 times then call url_2
+-- after 10 second then call url_1 again
+-- args eg: {"name=mark&age=18","name=mark2&age=19"}
+-- return eg: if success then return true,resps
+--            if failed then return false,resps
 local function multi_get_route(paramList)
     local fetchback_source_url_1="/fetchback_source1";
     local fetchback_source_url_2="/fetchback_source2";
@@ -86,8 +96,8 @@ local function multi_get_route(paramList)
     local key_time_expired_fetchback_multi ="key_time_expired_fetchback_multi";
 
     -- init
-    if configs:get("key_count_failed_fetchback_multi") == nil then
-        configs:set("key_count_failed_fetchback_multi",0);
+    if configs:get(key_count_failed_fetchback_multi) == nil then
+        configs:set(key_count_failed_fetchback_multi,0);
     end
 
     if configs:get(key_count_failed_fetchback_multi) < fetchback_try_count then
@@ -108,7 +118,7 @@ local function multi_get_route(paramList)
             if ok then
                 return true, resps;
             else
-                return false, nil;
+                return false, resps;
             end
         end
     else
@@ -121,7 +131,7 @@ local function multi_get_route(paramList)
         if ok then
             return true, resps;
         else
-            return false, nil;
+            return false, resps;
         end
     end
 end
