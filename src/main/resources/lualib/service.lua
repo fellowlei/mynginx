@@ -1,13 +1,173 @@
 local parser = require "redis.parser"
 local configs = ngx.shared.configs;
 
+-- 单个请求自动路由组件
+-- 如果请求url_master失败3次,自动切换到调用url_backup
+-- 过10秒后，自动切换到调用url_master
+-- 参数说明
+-- param eg: "name=mark&age=18"
+-- url_master eg: "/fetchback_source1"
+-- url_backup eg: "/fetchback_source2"
+-- return eg: if success then return true,resps
+--            if failed then return false,resps
+local function single_get_route(param,url_master,url_backup)
+    local val = "val";
+    local fetchback_source_url_master=url_master; -- 主服务
+    local fetchback_source_url_backup=url_backup; -- 备用服务
+    local expire_time = 10; -- 10秒重试3次，如果超过3次，调用备用服务。 调用备用服务，超过10秒，再读主服务
+    local failed_count = 3;  -- 重试次数
+    local key_time_back = "key_time_back_" .. url_master -- 10秒后读master的key
+    local key_count_fail = "key_count_fail_" .. url_master; -- 失败次数的key
+
+    -- 调用备用服务时间 == nil and 失败次数 < 3  则调用主服务
+    if  configs:get(key_time_back) == nil and (configs:get(key_count_fail) or 0)  < failed_count then  -- 失败次数 < 3
+        local resp = ngx.location.capture(fetchback_source_url_master,{args=param});
+        if resp.status == ngx.HTTP_OK then
+            return true,resp;
+        else
+            local ok, err = configs:incr(key_count_fail, 1)
+	    if not ok then ngx.say(err) end;
+            if not ok and err == "not found" then
+                configs:add(key_count_fail, 0, expire_time)  -- 10秒重试3次
+                configs:incr(key_count_fail, 1)
+            end
+	    ngx.say(configs:get(key_count_fail));
+
+            if configs:get(key_count_fail) >= failed_count then --失败次数 >= 3
+                configs:set(key_time_back,val, expire_time); -- 设置调用备用服务时间
+                --ngx.say("set time");
+            end
+            resp = ngx.location.capture(fetchback_source_url_backup,{args=param});
+            if resp.status == ngx.HTTP_OK then
+                return true,resp;
+            else
+                return false,resp;
+            end
+        end
+    else
+        local resp = ngx.location.capture(fetchback_source_url_backup,{args=param});
+        if resp.status == ngx.HTTP_OK then
+            return true,resp;
+        else
+            return false,resp;
+        end
+    end
+end
+
+-- 批量请求回源
+-- 参数说明
+-- url eg: "/fetchback_source1"
+-- paramList eg: {"name=mark&age=18","name=mark2&age=19"}
+local function multi_get(url, paramList)
+    local reqs = {}
+    for i, param in ipairs(paramList) do
+        table.insert(reqs, { url, { args = param } });
+    end
+    local isSuccess = true;
+    local resps = { ngx.location.capture_multi(reqs) }
+    for i, resp in ipairs(resps) do
+        if resp.status ~= ngx.HTTP_OK then
+            isSuccess = false;
+            break;
+            --ngx.say(resp.body)
+        end
+    end
+
+    if isSuccess then
+        return true, resps;
+    else
+        return false,resps;
+    end
+end
+
+-- 批量请求自动路由组件
+-- 如果请求url_master失败3次,自动切换到调用url_backup
+-- 过10秒后，自动切换到调用url_master
+-- 参数说明
+-- paramList eg: {"name=mark&age=18","name=mark2&age=19"}
+-- url_master eg: "/fetchback_source1"
+-- url_backup eg: "/fetchback_source2"
+-- return eg: if success then return true,resps
+--            if failed then return false,resps
+local function multi_get_route(paramList,url_master,url_backup)
+    local val = "val";
+    local fetchback_source_url_master=url_master;
+    local fetchback_source_url_backup=url_backup;
+    local expire_time_multi = 10; -- 10秒重试3次，如果超过3次，调用备用服务。 调用备用服务，超过10秒，再读主服务
+    local failed_count_multi = 3; -- 重试次数
+    local key_time_back_multi = "key_time_back_multi_".. url_master;  --10秒后读master的key
+    local key_count_fail_multi = "key_count_fail_multi_".. url_master;  -- 失败次数的key
+
+    -- 调用备用服务时间 == nil and 失败次数 < 3  则调用主服务
+    if configs:get(key_time_back_multi) == nil and (configs:get(key_count_fail_multi) or 0) < failed_count_multi then
+        local ok, resps = multi_get(fetchback_source_url_master, paramList)
+        if ok then
+            return true, resps;
+        else
+            local ok,err = configs:incr(key_count_fail_multi, 1);
+	    if not ok then ngx.say(err) end;
+            if not ok and err == "not found" then
+                configs:add(key_count_fail_multi,0,expire_time_multi); -- 10秒重试3次
+                configs:incr(key_count_fail_multi,1);
+            end
+            if configs:get(key_count_fail_multi) >= failed_count_multi then --失败次数 >= 3
+                configs:set(key_time_back_multi, val, expire_time_multi); -- 设置调用备用服务时间
+                --ngx.say("set time");
+            end
+            local ok, resps = multi_get(fetchback_source_url_backup, paramList)
+            if ok then
+                return true, resps;
+            else
+                return false, resps;
+            end
+        end
+    else
+        local ok, resps = multi_get(fetchback_source_url_backup, paramList)
+        if ok then
+            return true, resps;
+        else
+            return false, resps;
+        end
+    end
+end
+
+-- test
+local function multi_get_route_test()
+    local paramList = {};
+    table.insert(paramList, "name=mark")
+    table.insert(paramList, "name=mark2")
+
+    local ok, resps = multi_get_route(paramList,"/fetchback_source1","/fetchback_source2");
+    if ok then
+        for i, resp in ipairs(resps) do
+            if resp.status == ngx.HTTP_OK then
+                ngx.say(resp.body)
+            end
+        end
+    else
+        ngx.say("failed");
+    end
+end
+
+-- test
+local function single_get_route_test()
+    local param = "name=mark&age=18"
+    local ok, resp = single_get_route(param,"/fetchback_source1","/fetchback_source2");
+    if ok then
+        if resp.status == ngx.HTTP_OK then
+            ngx.say(resp.body)
+        end
+    else
+        ngx.say("failed");
+    end
+end
 -- fetchback single get route
 -- if call url_1 failed 3 times then call url_2
 -- after 10 second then call url_1 again
 -- args eg: "name=mark&age=18"
 -- return eg: if success then return true,res
 --            if failed then return false,res
-local function single_get_route(args)
+local function single_get_route_two(args)
     local fetchback_source_url_1="/fetchback_source1"; -- fetchback_url_1
     local fetchback_source_url_2="/fetchback_source2"; -- fetchback_url_1
     local fetchback_time_callback = 10; -- 时间间隔
@@ -58,35 +218,13 @@ local function single_get_route(args)
     end
 end
 
-local function multi_get(url, paramList)
-    local reqs = {}
-    for i, param in ipairs(paramList) do
-        table.insert(reqs, { url, { args = param } });
-    end
-    local isSuccess = true;
-    local resps = { ngx.location.capture_multi(reqs) }
-    for i, resp in ipairs(resps) do
-        if resp.status ~= ngx.HTTP_OK then
-            isSuccess = false;
-            break;
-            --ngx.say(resp.body)
-        end
-    end
-
-    if isSuccess then
-        return true, resps;
-    else
-        return false,resps;
-    end
-end
-
 -- fetchback multi get route
 -- if call url_1 failed 3 times then call url_2
 -- after 10 second then call url_1 again
 -- args eg: {"name=mark&age=18","name=mark2&age=19"}
 -- return eg: if success then return true,resps
 --            if failed then return false,resps
-local function multi_get_route(paramList)
+local function multi_get_route_two(paramList)
     local fetchback_source_url_1="/fetchback_source1";
     local fetchback_source_url_2="/fetchback_source2";
     local fetchback_time_callback = 10; -- 时间间隔

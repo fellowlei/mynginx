@@ -1,7 +1,7 @@
 local service = require "service"
 -- test capturelocation
 local function testCaptureLocation()
-    local ok,res = service.single_get_route('name=mark');
+    local ok,res = service.single_get_route('name=mark',"/fetchback_source1","/fetchback_source2");
     if ok then
         ngx.say(res.body)
     else
@@ -13,7 +13,7 @@ local function multi_get_route_test()
     table.insert(paramList, "name=mark")
     table.insert(paramList, "name=mark2")
 
-    local ok, resps = service.multi_get_route(paramList);
+    local ok, resps = service.multi_get_route(paramList,"/fetchback_source1","/fetchback_source2");
     if ok then
         for i, resp in ipairs(resps) do
             if resp.status == ngx.HTTP_OK then
@@ -25,6 +25,6 @@ local function multi_get_route_test()
     end
 end
 
---testCaptureLocation()
-multi_get_route_test();
+testCaptureLocation()
+--multi_get_route_test();
 --ngx.say("hello world");
