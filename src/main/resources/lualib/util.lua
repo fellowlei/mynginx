@@ -22,6 +22,25 @@ function _M.split(str, sep)
     return splitArray
 end
 
+function _M.sub_list_iter(list,step,sep)
+    local i = 1
+    return function()
+        local j=i + step -1
+        local size =#list
+        if j > size then j= size end
+        if i <= size then
+            local sub_list = table.concat(list,sep,i,j)
+            i = i + step
+            return sub_list;
+        end
+    end
+end
+--test
+--list = {1,2,3,4,5,6,7,8,9,10}
+--for i in sub_list_iter(list,5,",") do
+--    print(i)
+--end
+
 function _M.dumpList(list)
     print("----list dump----")
     for i in  ipairs(list) do
