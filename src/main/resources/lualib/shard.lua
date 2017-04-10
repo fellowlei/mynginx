@@ -1,12 +1,5 @@
 local mmh2 = require "resty.murmurhash2"
 
-
--- hash test
-local function hashtest()
-    local hash = mmh2 "test" -- hash contains number 403862830
-    ngx.say("hash result:" .. hash)
-end
-
 -- redis shard
 local redis = { "redis_01", "redis_02" }
 
@@ -15,6 +8,12 @@ local function getLocation(id)
     local index = hash % #redis;
     local index = index + 1; -- begin 0
     return redis[index];
+end
+
+-- test hash
+local function get_shard(key)
+    local hash = mmh2(key)
+    ngx.say(key..": hash result:" .. hash)
 end
 
 -- test

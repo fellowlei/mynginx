@@ -28,6 +28,23 @@ local function captureLocation(args)
     return res;
 end
 
+-- single redis get
+local function singleget(cmdlist)
+    local raw_reqs = {}
+    for i, req in ipairs(cmdlist) do
+        table.insert(raw_reqs, parser.build_query(req))
+    end
+
+    local location = "/" .. route.getLocation(cmdlist[1][2]) .. "?";
+    local res = ngx.location.capture(location .. #cmdlist,
+        { body = table.concat(raw_reqs, "") })
+    if res.status == 200 and res.body then
+        return res;
+    else
+        return nil;
+    end
+end
+
 -- multi redis get
 local function multiGet(cmdlist)
     local reqs = {}
@@ -36,7 +53,6 @@ local function multiGet(cmdlist)
         for j, req2 in ipairs(req) do
             table.insert(raw_reqs, parser.build_query(req2))
         end
-        --ngx.say(req[1][2].." route ".. route.getLocation(req[1][2]));
         table.insert(reqs, {
             "/" .. route.getLocation(req[1][2]) .. "?" .. #req, {
                 body = table.concat(raw_reqs, "")
@@ -48,21 +64,5 @@ local function multiGet(cmdlist)
     return resps;
 end
 
--- single redis get
-local function singleget(cmdlist)
-    local raw_reqs = {}
-    for i, req in ipairs(cmdlist) do
-        table.insert(raw_reqs, parser.build_query(req))
-    end
 
-    local location = "/" .. route.getLocation(cmdlist[1][2]) .. "?";
-    --ngx.say(location);
-    local res = ngx.location.capture(location .. #cmdlist,
-        { body = table.concat(raw_reqs, "") })
-    if res.status == 200 and res.body then
-        return res;
-    else
-        return nil;
-    end
-end
 
