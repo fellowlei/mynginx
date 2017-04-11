@@ -1,9 +1,10 @@
 local parser = require "redis.parser"
+local shard = require "shard"
 
 -- multi redis get
 -- cmdList 格式 {{{"get","name1"}} ,{{"get","name2"}}}
 -- route 规则 按cmdlist[*][1][2] 格式 例如 按"name1","name2"分区
-local function redis_multi_get(getLocation,cmdlist)
+local function redis_multi_get(cmdlist)
     local reqs = {}
     for i,req in ipairs(cmdlist) do
         local raw_reqs = {}
@@ -11,7 +12,7 @@ local function redis_multi_get(getLocation,cmdlist)
             table.insert(raw_reqs,parser.build_query(req2))
         end
         --ngx.say(req[1][2].." route ".. getLocation(req[1][2]));
-        table.insert(reqs,{"/"..getLocation(req[1][2]).."?"..#req,{
+        table.insert(reqs,{"/"..shard.getLocation(req[1][2]).."?"..#req,{
             body=table.concat(raw_reqs,"")}});
     end
 
@@ -33,7 +34,7 @@ local function test_redis_multi_get()
     table.insert(keylist,"name1")
     table.insert(keylist,"name2")
 
-    local resps = multiGet(cmdlist);
+    local resps = redis_multi_get(cmdlist);
     for i, resp in ipairs(resps) do
         if resp.status == 200 and resp.body then
             local replies = parser.parse_replies(resp.body,#cmdlist[i])
@@ -49,13 +50,13 @@ end
 -- single redis get
 -- cmdlist 格式 {{"set","name","mark"},{"get","name"}}
 -- route 规则 按 cmdlist[1][2] 格式 例如 按"name" 分区
-local function redis_single_get(getLocation,cmdlist)
+local function redis_single_get(cmdlist)
     local raw_reqs = {}
     for i, req in ipairs(cmdlist) do
         table.insert(raw_reqs, parser.build_query(req))
     end
 
-    local res = ngx.location.capture("/"..getLocation(req[1][2]).."?".. #cmdlist,
+    local res = ngx.location.capture("/"..shard.getLocation(req[1][2]).."?".. #cmdlist,
         { body = table.concat(raw_reqs, "") })
     if res.status == 200 and res.body then
         return res;
@@ -67,7 +68,7 @@ end
 -- test single get
 local function test_redis_single_get()
     local cmdlist = {{"set","name","mark"},{"get", "name"}}
-    local res = singleget(cmdlist)
+    local res = redis_single_get(cmdlist)
     if res ~= nil then
         local replies = parser.parse_replies(res.body, #cmdlist)
         for i, reply in ipairs(replies) do
