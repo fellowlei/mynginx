@@ -3,7 +3,7 @@
         }
         server{
                 listen                   80;
-                server_name              promoinfo.jd.local promoinfo.jd.com;
+                server_name              promoinfo.test.local promoinfo.test.com;
                 index index.shtml index.html index.htm;
                 root html;
                 client_max_body_size 1m;
@@ -17,7 +17,7 @@
                 proxy_buffer_size 256k;
                 proxy_busy_buffers_size 256k;
                 proxy_temp_file_write_size 256k;
-                proxy_set_header Host promoinfo.jd.cn;
+                proxy_set_header Host promoinfo.test.cn;
 
                 location / {
                         proxy_next_upstream     http_500 http_502 http_503 http_504 error timeout invalid_header;
